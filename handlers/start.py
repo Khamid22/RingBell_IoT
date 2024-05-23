@@ -1,14 +1,41 @@
 import asyncio
+import json
+
 import aiohttp
 import logging
 import telebot
+import random
+import paho.mqtt.client as mqtt
 from db_users import save_message
 from config import BOT_TOKEN
+import os
 
 AUTHORIZED_USERS = [1081721793, 1114820537, 1270439555]
 logging.basicConfig(level=logging.INFO)
 bot = telebot.TeleBot(BOT_TOKEN)
-ESP32_IP = None
+# MQTT configuration
+MQTT_BROKER = "mqtt.iotserver.uz"
+MQTT_PORT = 1883
+MQTT_TOPIC = "ttpu/User"
+USERNAME = "userTTPU"
+PASSWORD = "mqttpass"
+client_id = f'python-mqtt-{random.randint(0, 1000)}'
+
+# Initialize the MQTT client
+mqtt_client = mqtt.Client(protocol=mqtt.MQTTv311)
+mqtt_client.username_pw_set(USERNAME, PASSWORD)
+
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("Connected to MQTT broker", flush=True)
+    else:
+        print(f"Failed to connect to MQTT broker with result code {rc}", flush=True)
+
+
+mqtt_client.on_connect = on_connect
+mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+mqtt_client.loop_start()
 
 
 def is_authorized(user_id):
@@ -21,7 +48,7 @@ def send_welcome(message):
         bot.reply_to(message, "You are not authorized to use this bot.")
         return
     bot.reply_to(message, "Hi! Send /ring to ring the bell.")
-    # save_message(message.from_user.id, message.from_user.username, message.text)
+    save_message(message.from_user.id, message.from_user.username, message.text)
 
 
 @bot.message_handler(commands=['ring'])
@@ -30,18 +57,11 @@ def ring_bell(message):
         bot.reply_to(message, "You are not authorized to use this bot.")
         return
 
-    async def ring():
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(f'https://{ESP32_IP}/ring') as resp:
-                    if resp.status == 200:
-                        bot.reply_to(message, "Bell is ringing!")
-                    else:
-                        bot.reply_to(message, "Failed to ring the bell.")
-            except aiohttp.ClientError as e:
-                bot.reply_to(message, f"Error: {e}")
+    # JSON message to send to MQTT
+    json_message = json.dumps({"ring": "on"})
+    mqtt_client.publish(MQTT_TOPIC, json_message)
 
-    asyncio.run(ring())
+    bot.reply_to(message, "Bell is ringing!")
     save_message(message.from_user.id, message.from_user.username, message.text)
 
 
@@ -60,26 +80,37 @@ def handle_audio(message):
     elif duration > 180:  # 3 minutes in seconds
         bot.reply_to(message, "Audio duration must not exceed 3 minutes.")
     else:
-        downloaded_file = bot.download_file(file_info.file_path)
-        bot.reply_to(message, "Audio received successfully.")
-        # Handle the audio file as needed
-
-    save_message(message.from_user.id, message.from_user.username, message.text)
+        file_path = file_info.file_path
+        file_url = f'https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}'
+        file_name = "ringbell_audio_1"
+        mqtt_message = f'{file_name}: {file_url}'
+        mqtt_client.publish(MQTT_TOPIC, mqtt_message)
+        bot.reply_to(message, "Audio received and URL sent to MQTT broker.")
+        save_message(message.from_user.id, message.from_user.username, "Audio", file_url)
 
 
 @bot.message_handler(content_types=['voice'])
 def voice_processing(message):
+    if not is_authorized(message.from_user.id):
+        bot.reply_to(message, "You are not authorized to use this bot.")
+        return
+
     file_info = bot.get_file(message.voice.file_id)
-    file_size = file_info.file_size
+    file_size = message.voice.file_size
     duration = message.voice.duration
 
     if file_size > 2 * 1024 * 1024:  # 2 MB in bytes
-        bot.reply_to(message, "Audio size must not exceed 2MB.")
+        bot.reply_to(message, "Voice message size must not exceed 2MB.")
     elif duration > 180:  # 3 minutes in seconds
-        bot.reply_to(message, "Audio duration must not exceed 3 minutes.")
+        bot.reply_to(message, "Voice message duration must not exceed 3 minutes.")
     else:
-        downloaded_file = bot.download_file(file_info.file_path)
-        bot.reply_to(message, "Audio received successfully.")
+        file_path = file_info.file_path
+        file_url = f'https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}'
+        file_name = "ringbell_audio_1"
+        mqtt_message = f'{file_name}: {file_url}'
+        mqtt_client.publish(MQTT_TOPIC, mqtt_message)
+        bot.reply_to(message, "Voice message received and URL sent to MQTT broker.")
+        save_message(message.from_user.id, message.from_user.username, "Voice", file_url)
 
 
 if __name__ == "__main__":

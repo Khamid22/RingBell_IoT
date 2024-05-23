@@ -11,9 +11,9 @@ db_connection = mysql.connector.connect(
 db_cursor = db_connection.cursor()
 
 
-def save_message(user_id, username, message_text):
+def save_message(user_id, username, message_text, message_url=None):
     timestamp = datetime.now()
-    query = "INSERT INTO user_messages (user_id,username, message_text, message_time) VALUES (%s,%s , %s, %s)"
-    values = (user_id, username, message_text, timestamp)
+    query = "INSERT INTO user_messages (user_id, username, message_text, message_time, message_url) VALUES (%s, %s, %s, %s, %s)"
+    values = (user_id, username, message_text, timestamp, message_url)
     db_cursor.execute(query, values)
     db_connection.commit()
