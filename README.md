@@ -60,11 +60,14 @@ RingBell is a Telegram bot that interacts with an MQTT broker to control a bell.
     python start.py
     ```
 2. Use the following commands in Telegram:
-    - `/start`: Welcome message and initial instructions.
-    - `/ring`: Ring the bell.
-    - `/status`: Check the status of the bell.
-    - `/play`: Play audio through the bell.
-
+- `/start`: Welcome message and authorization check.
+- `/ring`: Send ring command to ESP32.
+- `/status`: Request status update from ESP32.
+- `/play`: Play the last downloaded audio file on ESP32.
+- `/stop`: Stop playing audio on ESP32.
+- Sending audio or voice message: Sends the file URL to ESP32 for playback.
+- `volume:<0-9>`: Set the volume to the specified level (0-9).
+  
 ## Eligible Users
 
 The list of eligible users can be modified to include new users. By default, the `AUTHORIZED_USERS` list is empty. To add new users, simply update the `AUTHORIZED_USERS` list in `start.py`.
